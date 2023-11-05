@@ -3,25 +3,68 @@ import { Request, Response } from "express"
 import pool from "../db"
 
 export async function getJournals(
-	req: Request & { user_id: string; user_name: string },
+	req: Request & {
+		user_id: string
+		user_name: string
+		query: {
+			startDate: Date
+			endDate: Date
+			sort: string
+			type: string[]
+			searchText: string
+			limit: string
+			offset: string
+		}
+	},
 	res: Response
 ) {
 	try {
 		const id = req.user_id
 
 		console.log("getJournals req.query", req.query)
-		const { limit = 2, offset = 0 } = req.query
+		const {
+			startDate,
+			endDate,
+			sort = "DESC",
+			type = [],
+			searchText = "",
+			limit = 25,
+			offset = 0,
+		} = req.query
 
-		const journals = await pool.query(
-			`SELECT j.user_id, u.first_name, u.last_name, j.id, j.date, j.amount, j.note, ac.name account_name, ac.type account_type 
+		const typeRevenue = type.find((t) => t === "Revenue") ? "Revenue" : ""
+		const typeExpense = type.find((t) => t === "Expense") ? "Expense" : ""
+
+		const query = `SELECT j.user_id, j.human_id, u.first_name, u.last_name, j.id, j.date, j.amount, j.note, j.document, ac.name account_name, ac.type account_type, COUNT(*) OVER() AS total_count
 			FROM journal j
 			 LEFT JOIN account_item ac ON ac.id = j.account_item_id 
 			 LEFT JOIN users u ON u.id = j.user_id
-			 WHERE j.user_id = $1 ORDER BY j.date DESC
-			 LIMIT $2 OFFSET $3`,
-			[id, limit, offset]
-		)
-		res.json(journals.rows)
+			 WHERE j.user_id = $1 
+			 ${
+					startDate && endDate
+						? `AND j.date::TIMESTAMPTZ >= '${startDate}'::TIMESTAMPTZ AND j.date::TIMESTAMPTZ <= '${endDate}'::TIMESTAMPTZ`
+						: ""
+				}
+				AND ac.type IN ($2, $3)
+				    ${searchText && `AND j.document @@ to_tsquery('${searchText}:*')`}
+							 ORDER BY j.date ${sort}
+			 LIMIT $4 OFFSET $5`
+
+		// console.log("query", query)
+
+		const journals = await pool.query(query, [
+			id,
+			typeRevenue,
+			typeExpense,
+			limit,
+			offset,
+		])
+		res.json({
+			data: journals.rows,
+			total_items: Number(journals.rows[0] ? journals.rows[0].total_count : 0),
+			current_page: Number(offset),
+			// currentPage: Math.ceil(Number(offset) / Number(limit)) + 1,
+		})
 	} catch (err) {
 		console.error(err.message)
 		res.status(400).send(err.message)
@@ -56,11 +99,19 @@ export async function createJournal(
 
 	const { date, amount, note, account } = req.body
 
+	const query = `INSERT INTO journal 
+	(date, amount, note, user_id, account_item_id, document)
+	VALUES($1, $2, $3, $4, $5, to_tsvector('${amount}' || ' ' || coalesce('${note}', '')))
+	RETURNING *`
+
 	try {
-		const newJournal = await pool.query(
-			"INSERT INTO journal (date, amount, note, user_id, account_item_id) VALUES($1, $2, $3, $4, $5) RETURNING *",
-			[date, amount, note, id, account]
-		)
+		const newJournal = await pool.query(query, [
+			date,
+			amount,
+			note,
+			id,
+			account,
+		])
 
 		res.json(newJournal.rows[0])
 	} catch (err) {
@@ -79,11 +130,19 @@ export async function updateJournal(
 
 	const { journalId = "" } = req.params
 
+	const query = `UPDATE journal 
+	SET date = $1, amount = $2, account_item_id = $3, note = $4, 
+	document = to_tsvector('${amount}' || ' ' || coalesce('${note}', '')) 
+	WHERE id = $5`
+
 	try {
-		const updatedJournal = await pool.query(
-			"UPDATE journal SET date = $1, amount = $2, account_item_id = $3, note = $4 WHERE id=$5",
-			[date, amount, account, note, journalId]
-		)
+		const updatedJournal = await pool.query(query, [
+			date,
+			amount,
+			account,
+			note,
+			journalId,
+		])
 
 		res.sendStatus(200)
 	} catch (err) {

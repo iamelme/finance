@@ -26,7 +26,7 @@ export default async function login(req: Request, res: Response) {
 			user.rows[0].password
 		)
 
-		if (!isPasswordValid) {
+		if (!isPasswordValid || !user.rows[0].is_active) {
 			return res.status(401).json("Invalid email/username/password")
 		}
 

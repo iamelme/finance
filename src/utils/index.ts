@@ -12,7 +12,7 @@ export function generateToken(
 		user_name: string
 		roles: string[]
 	},
-	expiresIn: string = "10s"
+	expiresIn: string = "1d"
 ) {
 	console.log("payload", payload)
 	return jwt.sign(payload, secret, { algorithm: "HS256", expiresIn })

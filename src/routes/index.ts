@@ -16,6 +16,7 @@ import {
 	getAccountItems,
 	updateAccountItem,
 } from "../controller/account"
+import { getReportJournal } from "../controller/report/journal"
 
 const router = Router()
 
@@ -34,6 +35,8 @@ router.route("/account/:accountItemId").get(getAccountItem)
 router.route("/account").post(createAccountItem)
 router.route("/account/:accountItemId").patch(updateAccountItem)
 router.route("/account/:accountItemId").delete(deleteAccountItem)
+
+router.route("/report/journal").get(getReportJournal)
 
 router.route("/logout").get(logout)
 

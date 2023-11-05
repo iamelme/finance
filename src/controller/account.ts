@@ -7,15 +7,21 @@ export async function getAccountItems(
 ) {
 	try {
 		const id = req.user_id
-		const { name = "" } = req.query
+		const { name = "", limit = 25, offset = 0 } = req.query
 
 		console.log("getAccountItems req", req.query)
 
 		const accountItems = await pool.query(
-			"SELECT * FROM account_item WHERE user_id = $1 AND name ILIKE $2 LIMIT 10",
-			[id, `%${name}%`]
+			"SELECT id, name, type, COUNT(*) OVER() AS total_count FROM account_item WHERE user_id = $1 AND name ILIKE $2 ORDER BY name ASC LIMIT $3 OFFSET $4",
+			[id, `%${name}%`, limit, offset]
 		)
-		res.json(accountItems.rows)
+		res.json({
+			data: accountItems.rows,
+			total_items: Number(
+				accountItems.rows[0] ? accountItems.rows[0].total_count : 0
+			),
+			current_page: Number(offset),
+		})
 	} catch (err) {
 		console.error(err.message)
 	}
@@ -52,6 +58,15 @@ export async function createAccountItem(
 		const { name, type } = req.body
 
 		console.log("createAccountItem req", req)
+
+		const account = await pool.query(
+			"SELECT name FROM account_item WHERE name ILIKE $1",
+			[name]
+		)
+
+		if (account.rows.length > 0) {
+			return res.status(400).send("Account already exist")
+		}
 
 		const newAccountItem = await pool.query(
 			"INSERT INTO account_item (name, type, user_id) VALUES($1, $2, $3) RETURNING id",
