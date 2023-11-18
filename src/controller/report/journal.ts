@@ -12,7 +12,19 @@ export async function getReportJournal(
 		return res.status(400).send("No user id")
 	}
 
-	const { startDate, endDate, accountId } = req.query
+	const { startDate, endDate, accountRevenueId, accountExpenseId } = req.query
+
+	// check differenceInCalendarDays if less or equal 7 days
+
+	// const query = `SELECT ac.type,
+
+	// `
+
+	// check differenceInCalendarDays if more than 7 days
+
+	const rangeDate = `AND j.date::TIMESTAMPTZ >= '${startDate}'::TIMESTAMPTZ AND j.date::TIMESTAMPTZ <= '${endDate}'::TIMESTAMPTZ`
+
+	// if()
 
 	const query = `SELECT ac.type,
 	SUM(j.amount) AS monthly_total,
@@ -21,17 +33,17 @@ export async function getReportJournal(
 	FROM journal j
 	JOIN account_item ac ON j.account_item_id = ac.id 
 	WHERE j.user_id = $1 
-	${
-		startDate && endDate
-			? `AND j.date::TIMESTAMPTZ >= '${startDate}'::TIMESTAMPTZ AND j.date::TIMESTAMPTZ <= '${endDate}'::TIMESTAMPTZ`
-			: ""
-	}
-	AND ac.id = $2
+	${startDate && endDate ? rangeDate : ""}
+	AND ac.id IN ($2, $3)
 	GROUP BY ac.type, year, month
 	ORDER BY year, month ASC`
 
 	try {
-		const report = await pool.query(query, [id, accountId])
+		const report = await pool.query(query, [
+			id,
+			accountRevenueId,
+			accountExpenseId,
+		])
 
 		console.log("report.rows", report.rows)
 
